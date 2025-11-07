@@ -9,45 +9,58 @@ import base64
 st.set_page_config(page_title="💧 Monthly Consumption Tracker", layout="wide")
 
 # ---------------------------------------------------------
-# BACKGROUND IMAGE FUNCTION
+# BACKGROUND IMAGE HANDLER WITH FALLBACK
 # ---------------------------------------------------------
-def add_bg_from_local(image_file):
-    with open(image_file, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode()
-    st.markdown(
-        f"""
+def set_background(image_file=None):
+    if image_file and os.path.exists(image_file):
+        with open(image_file, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
+        css = f"""
         <style>
         .stApp {{
             background-image: url("data:image/png;base64,{encoded}");
             background-size: cover;
             background-position: center;
-            background-repeat: no-repeat;
-        }}
-
-        .glass-card {{
-            background: rgba(255, 255, 255, 0.82);
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }}
         </style>
-        """,
-        unsafe_allow_html=True
-    )
+        """
+    else:
+        css = """
+        <style>
+        .stApp {
+            background: linear-gradient(135deg, #0078D7, #00C9A7);
+            background-size: cover;
+        }
+        </style>
+        """
+    st.markdown(css, unsafe_allow_html=True)
 
-# ✅ CALL BACKGROUND IMAGE HERE — CHANGE FILE NAME IF DIFFERENT
-add_bg_from_local("background/bg.jpg")
+# ✅ Try loading background, if missing ➝ fallback to gradient
+set_background("background/bg.jpg")
+
+# ---------------------------------------------------------
+# GLASS CARD STYLING
+# ---------------------------------------------------------
+st.markdown("""
+<style>
+.glass-card {
+    background: rgba(255,255,255,0.82);
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # TITLE
 # ---------------------------------------------------------
-st.markdown(
-    "<h1 style='text-align:center;color:#0078D7;'>💧 Monthly Consumption Tracker</h1>",
-    unsafe_allow_html=True
-)
+st.markdown("""
+<h1 style='text-align:center; color:white;'>💧 Monthly Consumption Tracker</h1>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# DATA DIRECTORY SETUP
+# DATA DIRECTORY
 # ---------------------------------------------------------
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -57,17 +70,11 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # ---------------------------------------------------------
 st.sidebar.header("📅 Month Selection")
 month = st.sidebar.text_input("Enter Month and Year (e.g., August 2025):", "August 2025")
-file_name = month.replace(" ", "_") + ".csv"
-file_path = os.path.join(DATA_DIR, file_name)
+file_path = os.path.join(DATA_DIR, f"{month.replace(' ', '_')}.csv")
 
-# ---------------------------------------------------------
-# TABLE COLUMNS
-# ---------------------------------------------------------
 columns = ["No.", "Name", "Old Meter", "New Meter", "Units Used", "Rate", "Total", "Amount Paid", "Balance"]
 
-# ---------------------------------------------------------
-# LOAD OR CREATE DATAFRAME
-# ---------------------------------------------------------
+# Load or create dataframe
 if os.path.exists(file_path):
     df = pd.read_csv(file_path)
     st.success(f"✅ Loaded data for {month}")
@@ -76,7 +83,7 @@ else:
     st.info(f"🆕 No data for {month}. Start entering readings below.")
 
 # ---------------------------------------------------------
-# EDITABLE TABLE WITH GLASS CARD EFFECT
+# EDITABLE TABLE (inside glass card)
 # ---------------------------------------------------------
 st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
 st.subheader(f"📋 {month} Consumption Table")
@@ -90,7 +97,7 @@ edited_df = st.data_editor(
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# AUTO CALCULATIONS (NO ERRORS NOW)
+# AUTO CALCULATION
 # ---------------------------------------------------------
 if not edited_df.empty:
     for col in ["Old Meter", "New Meter", "Rate", "Amount Paid"]:
@@ -101,9 +108,9 @@ if not edited_df.empty:
     edited_df["Balance"] = edited_df["Total"] - edited_df["Amount Paid"]
 
 # ---------------------------------------------------------
-# MONTH TOTAL SALES
+# MONTH SUMMARY
 # ---------------------------------------------------------
-st.metric(label="💰 Total Monthly Sales", value=f"{edited_df['Total'].sum():,.2f}")
+st.metric("💰 Total Monthly Sales", f"{edited_df['Total'].sum():,.2f}")
 
 # ---------------------------------------------------------
 # SIDEBAR BUTTONS
@@ -113,47 +120,37 @@ save_btn = st.sidebar.button("💾 Save Data")
 new_btn = st.sidebar.button("🆕 New Month")
 compare_btn = st.sidebar.button("📈 Compare Months")
 
-# ---------------------------------------------------------
-# SAVE DATA BUTTON
-# ---------------------------------------------------------
+# Save data
 if save_btn:
     edited_df.to_csv(file_path, index=False)
-    st.success(f"✅ Data saved for {month}!")
+    st.success(f"✅ Saved successfully for {month}")
 
-# ---------------------------------------------------------
-# NEW MONTH BUTTON
-# ---------------------------------------------------------
+# New month
 if new_btn:
     st.session_state.editor = pd.DataFrame(columns=columns)
     st.experimental_rerun()
 
-# ---------------------------------------------------------
-# MONTH COMPARISON BUTTON
-# ---------------------------------------------------------
+# Compare months
 if compare_btn:
-    files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
-    summary = []
+    months = []
+    for f in os.listdir(DATA_DIR):
+        if f.endswith(".csv"):
+            m = f.replace("_", " ").replace(".csv", "")
+            t = pd.read_csv(os.path.join(DATA_DIR, f))["Total"].sum()
+            months.append({"Month": m, "Total": t})
 
-    for f in files:
-        mo = f.replace("_", " ").replace(".csv", "")
-        data = pd.read_csv(os.path.join(DATA_DIR, f))
-        total = data["Total"].sum()
-        summary.append({"Month": mo, "Total": total})
-
-    if summary:
-        summary_df = pd.DataFrame(summary)
+    if months:
         st.subheader("📊 Monthly Comparison Summary")
-        summary_df = summary_df.sort_values("Month", key=lambda x: pd.to_datetime(x, errors="coerce"))
-        st.dataframe(summary_df, use_container_width=True)
-        st.bar_chart(summary_df.set_index("Month"))
+        compare_df = pd.DataFrame(months).sort_values("Month")
+        st.dataframe(compare_df, use_container_width=True)
+        st.bar_chart(compare_df.set_index("Month"))
     else:
-        st.info("ℹ️ No saved months to compare.")
+        st.info("ℹ️ No saved months available for comparison.")
 
 # ---------------------------------------------------------
 # FOOTER
 # ---------------------------------------------------------
-st.markdown("<p style='text-align:center;color:gray;'>Created by Eudes 💧 | Powered by Streamlit</p>", unsafe_allow_html=True)
-
+st.markdown("<p style='text-align:center;color:white;'>Created by Eudes 💧 | Powered by Streamlit</p>", unsafe_allow_html=True)
 
 
 
