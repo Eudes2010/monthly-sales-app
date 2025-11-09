@@ -102,7 +102,7 @@ edited_df = st.data_editor(
     df,
     num_rows="dynamic",
     use_container_width=True,
-    key=f"editor_{month}"
+    key=f"editor_{month.replace(' ', '_')}"
 )
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -143,10 +143,13 @@ if save_btn:
     edited_df.to_csv(file_path, index=False)
     st.success(f"✅ Data saved for {month}")
 
-# New month
+# ✅ FIXED NEW MONTH BUTTON
 if new_btn:
-    st.session_state[f"editor_{month}"] = pd.DataFrame(columns=columns)
-    st.rerun()
+    # Clears safely without breaking Streamlit's state system
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.session_state["blank_df"] = pd.DataFrame(columns=columns)
+    st.experimental_rerun()
 
 # Compare
 if compare_btn:
