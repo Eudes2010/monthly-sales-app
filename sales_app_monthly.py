@@ -1,125 +1,97 @@
 import streamlit as st
 import pandas as pd
 import os
-import base64
 import random
 
 # ---------------------------------------------------------
-# PAGE CONFIG
+# APP CONFIGURATION
 # ---------------------------------------------------------
-st.set_page_config(page_title="💧 Monthly Consumption Tracker", layout="wide")
+st.set_page_config(page_title="Water Consumption Tracker", page_icon="💧", layout="wide")
 
 # ---------------------------------------------------------
-# RANDOM BACKGROUND COLOR OR IMAGE
+# BEAUTIFY WITH RANDOM BACKGROUNDS
 # ---------------------------------------------------------
-def set_random_background():
-    colors = [
-        "linear-gradient(135deg, #0078D7, #00C9A7)",
-        "linear-gradient(135deg, #6A11CB, #2575FC)",
-        "linear-gradient(135deg, #FF6A00, #EE0979)",
-        "linear-gradient(135deg, #11998e, #38ef7d)",
-        "linear-gradient(135deg, #F7971E, #FFD200)"
-    ]
-    chosen = random.choice(colors)
-    css = f"""
+backgrounds = [
+    "linear-gradient(120deg, #a1c4fd 0%, #c2e9fb 100%)",
+    "linear-gradient(135deg, #f6d365 0%, #fda085 100%)",
+    "linear-gradient(120deg, #89f7fe 0%, #66a6ff 100%)",
+    "linear-gradient(120deg, #d4fc79 0%, #96e6a1 100%)",
+]
+st.markdown(
+    f"""
     <style>
-    .stApp {{
-        background: {chosen};
-        background-size: cover;
-        color: white;
-    }}
+        .stApp {{
+            background: {random.choice(backgrounds)};
+            color: #000000;
+            font-family: 'Segoe UI', sans-serif;
+        }}
+        div[data-testid="stSidebar"] {{
+            background-color: rgba(255,255,255,0.7);
+        }}
     </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-set_random_background()
-
-# ---------------------------------------------------------
-# GLASS CARD STYLE
-# ---------------------------------------------------------
-st.markdown("""
-<style>
-.glass-card {
-    background: rgba(255,255,255,0.85);
-    padding: 25px;
-    border-radius: 20px;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
-}
-.stButton>button {
-    background-color: #0078D7;
-    color: white;
-    border-radius: 10px;
-    padding: 10px 20px;
-    border: none;
-}
-.stButton>button:hover {
-    background-color: #00C9A7;
-    color: black;
-}
-</style>
-""", unsafe_allow_html=True)
+st.title("💧 Smart Water Consumption Tracker")
+st.markdown("Easily record, save, and compare monthly water usage for multiple companies.")
 
 # ---------------------------------------------------------
-# TITLE
+# DATA STORAGE
 # ---------------------------------------------------------
-st.markdown("<h1 style='text-align:center; color:white;'>💧 Monthly Water Consumption Tracker</h1>", unsafe_allow_html=True)
+BASE_DIR = "company_data"
+os.makedirs(BASE_DIR, exist_ok=True)
 
 # ---------------------------------------------------------
-# DATA DIRECTORY
+# SELECT COMPANY
 # ---------------------------------------------------------
-DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
+companies = ["Kitengela", "Ebenezer"]
+selected_company = st.sidebar.selectbox("🏢 Select Company", companies)
+COMPANY_DIR = os.path.join(BASE_DIR, selected_company)
+os.makedirs(COMPANY_DIR, exist_ok=True)
 
 # ---------------------------------------------------------
-# SIDEBAR CONTROLS
+# ENTER MONTH
 # ---------------------------------------------------------
-st.sidebar.header("📅 Month Settings")
-month = st.sidebar.text_input("Enter Month and Year (e.g., August 2025):", "August 2025")
-
-file_path = os.path.join(DATA_DIR, f"{month.replace(' ', '_')}.csv")
-
-columns = ["No.", "Name", "Old Meter", "New Meter", "Units Used", "Rate", "Total", "Amount Paid", "Balance"]
+month = st.sidebar.text_input("🗓️ Enter Month (e.g. August 2025)")
+file_path = os.path.join(COMPANY_DIR, f"{month.replace(' ', '_')}.csv") if month else None
 
 # ---------------------------------------------------------
-# LOAD OR CREATE DATA
+# TABLE STRUCTURE
 # ---------------------------------------------------------
-if os.path.exists(file_path):
+columns = ["Name", "Old Meter", "New Meter", "Rate", "Total"]
+
+# Load data if exists
+if month and os.path.exists(file_path):
     df = pd.read_csv(file_path)
-    st.success(f"✅ Loaded data for {month}")
 else:
     df = pd.DataFrame(columns=columns)
-    st.info(f"🆕 No data for {month}. Start entering readings below.")
 
 # ---------------------------------------------------------
-# MAIN TABLE
+# DISPLAY EDITOR
 # ---------------------------------------------------------
-st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-st.subheader(f"📋 {month} Consumption Table")
+st.subheader(f"📘 Water Usage Data — {selected_company}")
+st.info("Enter names, meter readings, and rates below. Totals will calculate automatically.")
 
 edited_df = st.data_editor(
     df,
     num_rows="dynamic",
+    key="editor",
     use_container_width=True,
-    key="editor"
 )
-st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# SAFE CALCULATIONS
+# CALCULATE TOTALS
 # ---------------------------------------------------------
-if not edited_df.empty:
-    for col in ["Old Meter", "New Meter", "Rate", "Amount Paid"]:
-        edited_df[col] = pd.to_numeric(edited_df[col], errors="coerce").fillna(0)
+try:
+    edited_df["Old Meter"] = pd.to_numeric(edited_df["Old Meter"], errors="coerce")
+    edited_df["New Meter"] = pd.to_numeric(edited_df["New Meter"], errors="coerce")
+    edited_df["Rate"] = pd.to_numeric(edited_df["Rate"], errors="coerce")
+    edited_df["Total"] = (edited_df["New Meter"] - edited_df["Old Meter"]) * edited_df["Rate"]
+except Exception:
+    st.warning("⚠️ Please ensure Old Meter, New Meter, and Rate contain valid numbers.")
 
-    edited_df["Units Used"] = edited_df["New Meter"] - edited_df["Old Meter"]
-    edited_df["Total"] = edited_df["Units Used"] * edited_df["Rate"]
-    edited_df["Balance"] = edited_df["Total"] - edited_df["Amount Paid"]
-
-# ---------------------------------------------------------
-# MONTH SUMMARY
-# ---------------------------------------------------------
-if not edited_df.empty:
-    st.metric("💰 Total Monthly Sales", f"{edited_df['Total'].sum():,.2f}")
+st.dataframe(edited_df, use_container_width=True)
 
 # ---------------------------------------------------------
 # SIDEBAR BUTTONS
@@ -131,29 +103,33 @@ saved_btn = st.sidebar.button("📁 View Saved Months")
 
 # Save
 if save_btn:
-    edited_df.to_csv(file_path, index=False)
-    st.success(f"✅ Data saved successfully for {month}")
+    if not month:
+        st.error("⚠️ Please enter a month name before saving.")
+    else:
+        edited_df.to_csv(file_path, index=False)
+        st.success(f"✅ Data saved successfully for {month} ({selected_company})")
 
-# New Month
+# ✅ FIXED NEW MONTH BUTTON
 if new_btn:
     st.session_state.clear()
-    st.session_state.editor = pd.DataFrame(columns=columns)
+    st.session_state["new_month_df"] = pd.DataFrame(columns=columns)
+    st.session_state["month"] = ""
     st.rerun()
 
-# View Saved Months
+# ✅ VIEW SAVED MONTHS
 if saved_btn:
-    saved_files = [f.replace("_", " ").replace(".csv", "") for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
+    saved_files = [
+        f.replace("_", " ").replace(".csv", "")
+        for f in os.listdir(COMPANY_DIR)
+        if f.endswith(".csv")
+    ]
     if saved_files:
-        st.subheader("📁 Saved Months")
+        st.subheader(f"📁 Saved Months for {selected_company}")
         for m in sorted(saved_files):
-            path = os.path.join(DATA_DIR, f"{m.replace(' ', '_')}.csv")
+            path = os.path.join(COMPANY_DIR, f"{m.replace(' ', '_')}.csv")
             total = pd.read_csv(path)["Total"].sum()
             st.write(f"🗓️ **{m}** — 💰 Total: **{total:,.2f}**")
     else:
-        st.info("ℹ️ No saved months yet.")
+        st.info("ℹ️ No saved months yet for this company.")
 
-# ---------------------------------------------------------
-# FOOTER
-# ---------------------------------------------------------
-st.markdown("<p style='text-align:center;color:white;'>Created by Eudes 💧 | Powered by Streamlit</p>", unsafe_allow_html=True)
 
