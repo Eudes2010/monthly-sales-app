@@ -143,13 +143,41 @@ if save_btn:
     edited_df.to_csv(file_path, index=False)
     st.success(f"✅ Data saved for {month}")
 
-# ✅ FIXED NEW MONTH BUTTON
+# New month (safe, prevents AttributeError on experimental rerun)
+def _safe_rerun():
+    """
+    Try to rerun the app using Streamlit's rerun.
+    If rerun is not available in this environment, set a small flag
+    and stop execution so the user can manually refresh.
+    """
+    try:
+        # Preferred method
+        st.experimental_rerun()
+    except Exception:
+        # Fallback if experimental_rerun is not present or raises an error.
+        # We set a flag so the app knows a refresh is expected, then stop execution.
+        st.session_state["_needs_refresh"] = True
+        # st.stop() aborts the script safely (user can then refresh page).
+        st.stop()
+
 if new_btn:
-    # Clears safely without breaking Streamlit's state system
+    # Clear all session state keys safely
     for key in list(st.session_state.keys()):
-        del st.session_state[key]
+        try:
+            del st.session_state[key]
+        except Exception:
+            pass
+    # Create a blank dataframe in session so the editor can attach a fresh table
     st.session_state["blank_df"] = pd.DataFrame(columns=columns)
-    st.experimental_rerun()
+    # Try to rerun safely (will fallback if rerun isn't available)
+    _safe_rerun()
+
+# If we landed here after a fallback, inform the user to refresh
+if st.session_state.get("_needs_refresh", False):
+    st.warning("🆕 New month prepared. Please refresh the page to continue (your blank table was created).")
+
+
+
 
 # Compare
 if compare_btn:
