@@ -1,3 +1,4 @@
+# Complete robust version: replace your current app file with this
 import streamlit as st
 import pandas as pd
 import os
@@ -42,179 +43,206 @@ def set_background(image_file=None):
 
 set_background("background/bg.jpg")
 
-# ---------------- STYLES (unchanged) ----------------
+# ---------------- STYLES ----------------
 st.markdown("""
 <style>
 .glass-card {
-    background: rgba(255,255,255,0.82);
-    padding: 25px;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    background: rgba(255,255,255,0.92);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.15);
 }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align:center; color:white;'>💧 Monthly Consumption Tracker</h1>", unsafe_allow_html=True)
 
-# ---------------- DATA DIRECTORY ----------------
+# ---------------- DATA DIR ----------------
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# ---------------- SIDEBAR: month input (use session key so we can set it) ----------------
-if "month" not in st.session_state:
-    st.session_state["month"] = "August 2025"
-month = st.sidebar.text_input("Enter Month and Year (e.g., August 2025):", value=st.session_state["month"], key="month")
-
-file_path = os.path.join(DATA_DIR, f"{month.replace(' ', '_')}.csv")
-
-# ---------------- COLUMNS (with Current and both totals) ----------------
-columns = [
+# ---------------- COLUMNS ----------------
+COLUMNS = [
     "No.", "Name", "Current", "Previous", "New Meter",
     "1st Total", "Rate", "2nd Total", "Amount Paid", "Balance"
 ]
 
-# ---------------- Helper: safe rerun ----------------
-def _safe_rerun():
+# ---------------- SESSION DEFAULTS ----------------
+if "current_file" not in st.session_state:
+    st.session_state["current_file"] = None
+if "df_loaded" not in st.session_state:
+    st.session_state["df_loaded"] = None
+
+# ---------------- SAFE RERUN HELPER ----------------
+def safe_rerun():
     try:
         st.experimental_rerun()
     except Exception:
-        try:
-            st.session_state["_needs_refresh"] = True
-            st.stop()
-        except Exception:
-            # last resort: do nothing
-            pass
+        # fallback: set flag and stop
+        st.session_state["_needs_refresh"] = True
+        st.stop()
 
-# ---------------- Load dataframe: if a file was loaded via "Load saved month" use it ----------------
-# If a loaded_df exists in session state (from pressing Load), use that instead of reading file_path.
-if "loaded_df" in st.session_state and st.session_state.get("loaded_from") == f"{file_path}":
-    df = st.session_state["loaded_df"]
-else:
-    if os.path.exists(file_path):
-        try:
-            df = pd.read_csv(file_path)
-        except Exception:
-            df = pd.DataFrame(columns=columns)
+# ---------------- SIDEBAR: month input ----------------
+# We control the sidebar month text via session so Load can set it
+if "sidebar_month" not in st.session_state:
+    st.session_state["sidebar_month"] = "August 2025"
+
+month_input = st.sidebar.text_input(
+    "Enter Month and Year (e.g., August 2025):",
+    value=st.session_state["sidebar_month"],
+    key="month_input"
+)
+
+# When user types a month and it's different, update current_file and clear loaded df
+if month_input != st.session_state.get("sidebar_month"):
+    st.session_state["sidebar_month"] = month_input
+    # update current file path but don't overwrite loaded_df unless file exists
+    if month_input.strip() == "":
+        st.session_state["current_file"] = None
     else:
-        df = pd.DataFrame(columns=columns)
+        st.session_state["current_file"] = os.path.join(DATA_DIR, f"{month_input.replace(' ', '_')}.csv")
+    # clear df_loaded only if the file does not match
+    if not (st.session_state["current_file"] and os.path.exists(st.session_state["current_file"])):
+        st.session_state["df_loaded"] = None
 
-# ---------------- Main editable table ----------------
+# ---------------- SELECT WHICH dataframe to show in editor ----------------
+def load_df_for_editor():
+    # Priority:
+    # 1) if df_loaded in session and current_file matches loaded_from => use it
+    # 2) else if file exists for current_file => read file
+    # 3) else empty df with columns
+    cur = st.session_state.get("current_file")
+    if st.session_state.get("df_loaded") is not None:
+        return st.session_state["df_loaded"]
+    if cur and os.path.exists(cur):
+        try:
+            df = pd.read_csv(cur)
+            # ensure columns consistent
+            for c in COLUMNS:
+                if c not in df.columns:
+                    df[c] = ""
+            return df[COLUMNS]
+        except Exception:
+            # corrupted file fallback
+            return pd.DataFrame(columns=COLUMNS)
+    # default blank
+    return pd.DataFrame(columns=COLUMNS)
+
+df = load_df_for_editor()
+
+# ---------------- MAIN EDITOR ----------------
 st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-st.subheader(f"📋 {month} Consumption Table")
-
-# Use a stable key per month so editor state doesn't clash
-editor_key = f"editor_{month.replace(' ', '_')}"
+st.subheader(f"📋 {month_input or 'New Month'} Consumption Table")
+editor_key = f"editor_{(st.session_state.get('current_file') or 'blank').replace('/', '_')}"
 edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key=editor_key)
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- Safe calculations ----------------
-if not edited_df.empty:
+# ---------------- CALCULATIONS ----------------
+def recalc(df_in):
+    if df_in is None or df_in.empty:
+        return df_in
     try:
         for col in ["Current", "Previous", "New Meter", "Rate", "Amount Paid"]:
-            edited_df[col] = pd.to_numeric(edited_df[col], errors="coerce").fillna(0)
+            if col in df_in.columns:
+                df_in[col] = pd.to_numeric(df_in[col], errors="coerce").fillna(0)
+            else:
+                df_in[col] = 0
+        # Compute totals
+        df_in["1st Total"] = df_in["Current"] - df_in["Previous"]
+        df_in["2nd Total"] = df_in["1st Total"] * df_in["Rate"]
+        df_in["Balance"] = df_in["2nd Total"] - df_in["Amount Paid"]
+        # Keep only desired column order (and convert to numeric where appropriate)
+        for c in ["1st Total", "2nd Total", "Balance"]:
+            df_in[c] = pd.to_numeric(df_in[c], errors="coerce").fillna(0)
+    except Exception:
+        st.warning("⚠️ Could not calculate totals (check numeric fields).")
+    return df_in
 
-        edited_df["1st Total"] = edited_df["Current"] - edited_df["Previous"]
-        edited_df["2nd Total"] = edited_df["1st Total"] * edited_df["Rate"]
-        edited_df["Balance"] = edited_df["2nd Total"] - edited_df["Amount Paid"]
-    except Exception as e:
-        st.warning(f"⚠️ Could not calculate totals: {e}")
+edited_df = recalc(edited_df)
 
-# ---------------- Month summary ----------------
-if not edited_df.empty and "2nd Total" in edited_df.columns:
-    total_sales = edited_df["2nd Total"].sum()
-    st.metric("💰 Total Monthly Sales", f"{total_sales:,.2f}")
+# ---------------- SHOW METRIC ----------------
+if "2nd Total" in edited_df.columns and not edited_df.empty:
+    st.metric("💰 Total Monthly Sales", f"{edited_df['2nd Total'].sum():,.2f}")
 
-# ---------------- Sidebar buttons ----------------
+# ---------------- SIDEBAR BUTTONS ----------------
 st.sidebar.markdown("---")
 save_btn = st.sidebar.button("💾 Save Data")
 new_btn = st.sidebar.button("🆕 New Month")
 show_saved_btn = st.sidebar.button("📂 Show Saved Months")
 
-# --------------- Save logic (unchanged) ---------------
+# ---------------- SAVE LOGIC ----------------
 if save_btn:
-    # ensure directory exists
-    os.makedirs(DATA_DIR, exist_ok=True)
-    edited_df.to_csv(file_path, index=False)
-    st.success(f"✅ Data saved for {month}")
-
-# New month (safe, prevents AttributeError on experimental rerun)
-def _safe_rerun():
-    """
-    Try to rerun the app using Streamlit's rerun.
-    If rerun is not available in this environment, set a small flag
-    and stop execution so the user can manually refresh.
-    """
-    try:
-        # Preferred method
-        st.experimental_rerun()
-    except Exception:
-        # Fallback if experimental_rerun is not present or raises an error.
-        # We set a flag so the app knows a refresh is expected, then stop execution.
-        st.session_state["_needs_refresh"] = True
-        # st.stop() aborts the script safely (user can then refresh page).
-        st.stop()
-
-if new_btn:
-    # Clear all session state keys safely
-    for key in list(st.session_state.keys()):
+    # ensure we have a month name
+    if not st.session_state.get("sidebar_month"):
+        st.error("⚠️ Please enter a month name in the sidebar before saving.")
+    else:
+        cur = st.session_state["current_file"]
+        # if no current_file path (empty month), set from sidebar_month
+        if not cur:
+            cur = os.path.join(DATA_DIR, f"{st.session_state['sidebar_month'].replace(' ', '_')}.csv")
+            st.session_state["current_file"] = cur
+        # write file: convert dataframe to CSV (force all columns present)
         try:
-            del st.session_state[key]
-        except Exception:
-            pass
-    # Create a blank dataframe in session so the editor can attach a fresh table
-    st.session_state["blank_df"] = pd.DataFrame(columns=columns)
-    # Try to rerun safely (will fallback if rerun isn't available)
-    _safe_rerun()
+            save_df = edited_df.copy()
+            for c in COLUMNS:
+                if c not in save_df.columns:
+                    save_df[c] = ""
+            save_df = save_df[COLUMNS]
+            os.makedirs(DATA_DIR, exist_ok=True)
+            save_df.to_csv(cur, index=False)
+            # mark loaded_df so that after save editor shows same
+            st.session_state["df_loaded"] = save_df
+            st.session_state["loaded_from"] = cur
+            st.success(f"✅ Data saved to {os.path.basename(cur)}")
+        except Exception as e:
+            st.error(f"Failed to save file: {e}")
 
-# If we landed here after a fallback, inform the user to refresh
-if st.session_state.get("_needs_refresh", False):
-    st.warning("🆕 New month prepared. Please refresh the page to continue (your blank table was created).")
+# ---------------- NEW MONTH ----------------
+if new_btn:
+    # clear session keys that control editor or loaded data
+    for k in list(st.session_state.keys()):
+        if k.startswith("editor_") or k in ("df_loaded", "loaded_from", "current_file"):
+            del st.session_state[k]
+    # prepare an empty dataframe in session and clear month input
+    st.session_state["df_loaded"] = pd.DataFrame(columns=COLUMNS)
+    st.session_state["current_file"] = None
+    st.session_state["sidebar_month"] = ""
+    # rerun safely
+    safe_rerun()
 
-
-# --------------- Show Saved Months and allow Loading ---------------
+# ---------------- SHOW AND LOAD SAVED MONTHS ----------------
 if show_saved_btn:
     saved_files = sorted([f for f in os.listdir(DATA_DIR) if f.endswith(".csv")])
     if not saved_files:
         st.info("ℹ️ No saved months found yet.")
     else:
         st.subheader("📂 Saved Months")
-        # show a selectbox of saved files (display friendly names)
         display_names = [f.replace("_", " ").replace(".csv", "") for f in saved_files]
-        selected_index = st.selectbox("Select a month to load:", options=list(range(len(display_names))),
-                                      format_func=lambda i, names=display_names: names[i])
-        col1, col2 = st.columns([3,1])
-        with col2:
-            if st.button("Load Selected"):
-                chosen_file = saved_files[selected_index]
-                chosen_path = os.path.join(DATA_DIR, chosen_file)
-                try:
-                    df_loaded = pd.read_csv(chosen_path)
-                except Exception:
-                    df_loaded = pd.DataFrame(columns=columns)
-                # store loaded df and where it was loaded from, then set sidebar month to the loaded name
-                st.session_state["loaded_df"] = df_loaded
-                st.session_state["loaded_from"] = chosen_path
-                # set the sidebar month text to the chosen name (without .csv)
-                st.session_state["month"] = display_names[selected_index]
-                _safe_rerun()
+        selected_display = st.selectbox("Select a month to load:", options=display_names)
+        if st.button("Load Selected"):
+            # map display to filename
+            idx = display_names.index(selected_display)
+            chosen_file = saved_files[idx]
+            chosen_path = os.path.join(DATA_DIR, chosen_file)
+            try:
+                df_loaded = pd.read_csv(chosen_path)
+            except Exception:
+                df_loaded = pd.DataFrame(columns=COLUMNS)
+            # set session state so editor will show this df
+            st.session_state["df_loaded"] = df_loaded
+            st.session_state["loaded_from"] = chosen_path
+            # set sidebar month text to loaded name
+            st.session_state["sidebar_month"] = selected_display
+            st.session_state["current_file"] = chosen_path
+            safe_rerun()
 
-# If we loaded a file previously but the sidebar month doesn't match, keep the editor content consistent
-if "loaded_df" in st.session_state and st.session_state.get("loaded_from"):
-    # ensure editor shows loaded_df for that file
-    # when the user edits and hits Save, code above will save to file_path computed from sidebar month
-    pass
+# ---------------- If we have loaded_df set from earlier, show a small note ---------------
+if st.session_state.get("df_loaded") is not None and st.session_state.get("loaded_from"):
+    st.info(f"Loaded file: {os.path.basename(st.session_state['loaded_from'])} — you can edit and Save.")
 
-# If we prepared a blank_df after New Month, and the editor key is present, ensure editor shows blank
-if "blank_df" in st.session_state and st.session_state["month"] == "":
-    # replace editor content by showing blank_df — create a temporary editor key
-    temp_key = "editor_blank"
-    if temp_key not in st.session_state:
-        st.session_state[temp_key] = True
-    # display blank editor (this won't overwrite the main editor above but ensures a blank is ready after rerun)
-    st.write("🆕 New month ready — please type the month name in the sidebar and begin entering data.")
-
-# ---------------- Footer ----------------
+# ---------------- FOOTER ----------------
 st.markdown("<p style='text-align:center;color:white;'>Created by Eudes 💧 | Powered by Streamlit</p>", unsafe_allow_html=True)
+
 
 
 
