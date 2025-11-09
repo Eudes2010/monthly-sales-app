@@ -9,7 +9,7 @@ import base64
 st.set_page_config(page_title="💧 Monthly Consumption Tracker", layout="wide")
 
 # ---------------------------------------------------------
-# BACKGROUND IMAGE HANDLER WITH FALLBACK
+# BACKGROUND HANDLER
 # ---------------------------------------------------------
 def set_background(image_file=None):
     try:
@@ -47,7 +47,7 @@ def set_background(image_file=None):
 set_background("background/bg.jpg")
 
 # ---------------------------------------------------------
-# GLASS CARD STYLE
+# STYLES
 # ---------------------------------------------------------
 st.markdown("""
 <style>
@@ -66,25 +66,26 @@ st.markdown("""
 st.markdown("<h1 style='text-align:center; color:white;'>💧 Monthly Consumption Tracker</h1>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# DATA DIRECTORY
+# FOLDER SETUP
 # ---------------------------------------------------------
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ---------------------------------------------------------
-# SIDEBAR
+# SIDEBAR CONTROLS
 # ---------------------------------------------------------
 st.sidebar.header("📅 Month Selection")
 month = st.sidebar.text_input("Enter Month and Year (e.g., August 2025):", "August 2025")
 file_path = os.path.join(DATA_DIR, f"{month.replace(' ', '_')}.csv")
 
-# Updated columns with "Current" and two "Total" columns
 columns = [
     "No.", "Name", "Current", "Previous", "New Meter",
-    "Total 1", "Rate", "Total", "Amount Paid", "Balance"
+    "1st Total", "Rate", "2nd Total", "Amount Paid", "Balance"
 ]
 
-# Load or create data
+# ---------------------------------------------------------
+# LOAD OR CREATE MONTHLY DATA
+# ---------------------------------------------------------
 if os.path.exists(file_path):
     df = pd.read_csv(file_path)
     st.success(f"✅ Loaded data for {month}")
@@ -93,7 +94,7 @@ else:
     st.info(f"🆕 No data for {month}. Start entering readings below.")
 
 # ---------------------------------------------------------
-# EDITABLE TABLE
+# TABLE SECTION
 # ---------------------------------------------------------
 st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
 st.subheader(f"📋 {month} Consumption Table")
@@ -102,22 +103,27 @@ edited_df = st.data_editor(
     df,
     num_rows="dynamic",
     use_container_width=True,
-    key=f"editor_{month.replace(' ', '_')}"
+    key=f"editor_{month}"
 )
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# SAFE AUTO CALCULATION
+# SAFE CALCULATIONS
 # ---------------------------------------------------------
 if not edited_df.empty:
     try:
+        # Convert number fields safely
         for col in ["Current", "Previous", "New Meter", "Rate", "Amount Paid"]:
             edited_df[col] = pd.to_numeric(edited_df[col], errors="coerce").fillna(0)
 
-        # Calculate the two totals
-        edited_df["Total 1"] = edited_df["Current"] - edited_df["Previous"]
-        edited_df["Total"] = edited_df["Total 1"] * edited_df["Rate"]
-        edited_df["Balance"] = edited_df["Total"] - edited_df["Amount Paid"]
+        # First Total (Current - Previous)
+        edited_df["1st Total"] = edited_df["Current"] - edited_df["Previous"]
+
+        # Second Total (New Meter * Rate)
+        edited_df["2nd Total"] = edited_df["1st Total"] * edited_df["Rate"]
+
+        # Balance
+        edited_df["Balance"] = edited_df["2nd Total"] - edited_df["Amount Paid"]
 
     except Exception as e:
         st.warning(f"⚠️ Could not calculate totals: {e}")
@@ -126,17 +132,16 @@ if not edited_df.empty:
 # MONTH SUMMARY
 # ---------------------------------------------------------
 if not edited_df.empty:
-    total_sales = edited_df["Total"].sum()
+    total_sales = edited_df["2nd Total"].sum()
     st.metric("💰 Total Monthly Sales", f"{total_sales:,.2f}")
 
 # ---------------------------------------------------------
-# SIDEBAR BUTTONS
+# BUTTONS
 # ---------------------------------------------------------
 st.sidebar.markdown("---")
 save_btn = st.sidebar.button("💾 Save Data")
 new_btn = st.sidebar.button("🆕 New Month")
-compare_btn = st.sidebar.button("📈 Compare Months")
-saved_btn = st.sidebar.button("📂 Show Saved Months")
+show_saved_btn = st.sidebar.button("📂 Show Saved Months")
 
 # Save
 if save_btn:
@@ -176,34 +181,16 @@ if new_btn:
 if st.session_state.get("_needs_refresh", False):
     st.warning("🆕 New month prepared. Please refresh the page to continue (your blank table was created).")
 
-
-
-
-# Compare
-if compare_btn:
-    months = []
-    for f in os.listdir(DATA_DIR):
-        if f.endswith(".csv"):
-            m = f.replace("_", " ").replace(".csv", "")
-            t = pd.read_csv(os.path.join(DATA_DIR, f))["Total"].sum()
-            months.append({"Month": m, "Total": t})
-
-    if months:
-        st.subheader("📊 Monthly Comparison Summary")
-        compare_df = pd.DataFrame(months).sort_values("Month")
-        st.dataframe(compare_df, use_container_width=True)
-        st.bar_chart(compare_df.set_index("Month"))
-    else:
-        st.info("ℹ️ No saved months yet to compare.")
-
 # Show saved months
-if saved_btn:
+if show_saved_btn:
+    st.subheader("📂 Saved Months")
     saved_files = [f.replace("_", " ").replace(".csv", "") for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
     if saved_files:
-        st.subheader("📂 Saved Months")
-        st.write(saved_files)
+        st.write("### Available Months:")
+        for f in saved_files:
+            st.markdown(f"- 📅 **{f}**")
     else:
-        st.info("No saved months found yet.")
+        st.info("ℹ️ No saved months found yet.")
 
 # ---------------------------------------------------------
 # FOOTER
