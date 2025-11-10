@@ -9,45 +9,36 @@ import base64
 st.set_page_config(page_title="💧 Monthly Consumption Tracker", layout="wide")
 
 # ---------------------------------------------------------
-# BACKGROUND IMAGE HANDLER
+# BACKGROUND IMAGE
 # ---------------------------------------------------------
 def set_background(image_file=None):
-    try:
-        if image_file and os.path.exists(image_file):
-            with open(image_file, "rb") as f:
-                encoded = base64.b64encode(f.read()).decode()
-            css = f"""
-            <style>
-            .stApp {{
-                background-image: url("data:image/png;base64,{encoded}");
-                background-size: cover;
-                background-position: center;
-            }}
-            </style>
-            """
-        else:
-            css = """
-            <style>
-            .stApp {
-                background: linear-gradient(135deg, #0078D7, #00C9A7);
-                background-size: cover;
-            }
-            </style>
-            """
-        st.markdown(css, unsafe_allow_html=True)
-    except Exception:
-        st.markdown("""
+    if image_file and os.path.exists(image_file):
+        with open(image_file, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
+        css = f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/png;base64,{encoded}");
+            background-size: cover;
+            background-position: center;
+        }}
+        </style>
+        """
+    else:
+        css = """
         <style>
         .stApp {
             background: linear-gradient(135deg, #0078D7, #00C9A7);
+            background-size: cover;
         }
         </style>
-        """, unsafe_allow_html=True)
+        """
+    st.markdown(css, unsafe_allow_html=True)
 
 set_background("background/bg.jpg")
 
 # ---------------------------------------------------------
-# STYLING (Glass Card)
+# PAGE STYLE
 # ---------------------------------------------------------
 st.markdown("""
 <style>
@@ -61,7 +52,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# TITLE
+# HEADER
 # ---------------------------------------------------------
 st.markdown("<h1 style='text-align:center; color:white;'>💧 Monthly Consumption Tracker (Excel Style)</h1>", unsafe_allow_html=True)
 
@@ -72,7 +63,7 @@ DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ---------------------------------------------------------
-# SIDEBAR (COMPANY + MONTH)
+# SIDEBAR CONTROLS
 # ---------------------------------------------------------
 st.sidebar.header("🏢 Company & Month Setup")
 company = st.sidebar.text_input("Company Name:", "Kitengela")
@@ -95,66 +86,108 @@ else:
     df = pd.DataFrame(columns=columns)
 
 # ---------------------------------------------------------
-# EXCEL-LIKE EDITABLE TABLE
+# MAIN BUTTONS
 # ---------------------------------------------------------
-st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-st.subheader(f"📋 {company} — {month} Data Table (Editable like Excel)")
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    if st.button("💾 Save File"):
+        df.to_csv(st.session_state.current_file, index=False)
+        st.success(f"✅ File saved: {os.path.basename(st.session_state.current_file)}")
 
-edited_df = st.data_editor(
-    df,
-    num_rows="dynamic",
-    use_container_width=True,
-    key="editor"
-)
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# AUTO CALCULATION (LIKE FORMULAS)
-# ---------------------------------------------------------
-if not edited_df.empty:
-    for col in ["Old Meter", "New Meter", "Rate", "Amount Paid", "1st Total", "2nd Total", "Current"]:
-        edited_df[col] = pd.to_numeric(edited_df[col], errors="coerce").fillna(0)
-
-    edited_df["1st Total"] = edited_df["New Meter"] - edited_df["Old Meter"]
-    edited_df["2nd Total"] = edited_df["1st Total"] * edited_df["Rate"]
-    edited_df["Balance"] = edited_df["2nd Total"] - edited_df["Amount Paid"]
-
-# ---------------------------------------------------------
-# AUTO-SAVE FEATURE
-# ---------------------------------------------------------
-edited_df.to_csv(st.session_state.current_file, index=False)
-st.success(f"💾 Auto-saved: {company} - {month}")
-
-# ---------------------------------------------------------
-# TOTAL SALES SUMMARY
-# ---------------------------------------------------------
-if not edited_df.empty:
-    total_sales = edited_df["2nd Total"].sum()
-    st.metric("💰 Total Monthly Sales", f"{total_sales:,.2f}")
-
-# ---------------------------------------------------------
-# SIDEBAR: SAVED FILES MANAGER (LIKE EXCEL OPEN)
-# ---------------------------------------------------------
-st.sidebar.markdown("---")
-st.sidebar.subheader("📂 Saved Files Manager")
-
-saved_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
-
-if saved_files:
-    selected_file = st.sidebar.selectbox("Select a saved file:", saved_files)
-    open_btn = st.sidebar.button("📂 Open Selected File")
-
-    if open_btn and selected_file:
-        st.session_state.current_file = os.path.join(DATA_DIR, selected_file)
-        st.success(f"✅ Opened {selected_file}")
+with col2:
+    if st.button("🆕 New Month"):
+        new_file = f"{company}_{month.replace(' ', '_')}_new.csv"
+        st.session_state.current_file = os.path.join(DATA_DIR, new_file)
+        st.session_state.new_df = pd.DataFrame(columns=columns)
+        st.success("📄 New blank month created.")
         st.rerun()
-else:
-    st.sidebar.info("No saved files found yet.")
+
+with col3:
+    if st.button("📂 Compare Months"):
+        st.session_state.view = "compare"
+        st.rerun()
+
+with col4:
+    if st.button("↩ Return"):
+        st.session_state.view = "main"
+        st.rerun()
+
+# ---------------------------------------------------------
+# VIEW LOGIC
+# ---------------------------------------------------------
+if "view" not in st.session_state:
+    st.session_state.view = "main"
+
+# ---------------------------------------------------------
+# MAIN VIEW (EXCEL-LIKE EDITOR)
+# ---------------------------------------------------------
+if st.session_state.view == "main":
+    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+    st.subheader(f"📋 {company} — {month} Data Table")
+
+    edited_df = st.data_editor(
+        df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="editor"
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Automatic Calculations
+    if not edited_df.empty:
+        for col in ["Old Meter", "New Meter", "Rate", "Amount Paid", "1st Total", "2nd Total", "Current"]:
+            edited_df[col] = pd.to_numeric(edited_df[col], errors="coerce").fillna(0)
+
+        edited_df["1st Total"] = edited_df["New Meter"] - edited_df["Old Meter"]
+        edited_df["2nd Total"] = edited_df["1st Total"] * edited_df["Rate"]
+        edited_df["Balance"] = edited_df["2nd Total"] - edited_df["Amount Paid"]
+
+        edited_df.to_csv(st.session_state.current_file, index=False)
+        st.success(f"💾 Auto-saved: {os.path.basename(st.session_state.current_file)}")
+
+        total_sales = edited_df["2nd Total"].sum()
+        st.metric("💰 Total Monthly Sales", f"{total_sales:,.2f}")
+
+# ---------------------------------------------------------
+# COMPARE MONTHS VIEW
+# ---------------------------------------------------------
+elif st.session_state.view == "compare":
+    st.subheader("📊 Compare Two Saved Months")
+
+    files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
+    if len(files) < 2:
+        st.warning("You need at least 2 saved months to compare.")
+    else:
+        c1, c2 = st.columns(2)
+        with c1:
+            f1 = st.selectbox("Select First Month", files, key="f1")
+        with c2:
+            f2 = st.selectbox("Select Second Month", files, key="f2")
+
+        if st.button("🔍 Compare Now"):
+            df1 = pd.read_csv(os.path.join(DATA_DIR, f1))
+            df2 = pd.read_csv(os.path.join(DATA_DIR, f2))
+
+            t1 = df1["2nd Total"].sum()
+            t2 = df2["2nd Total"].sum()
+
+            diff = t2 - t1
+
+            st.write(f"💧 **{f1}:** {t1:,.2f}")
+            st.write(f"💧 **{f2}:** {t2:,.2f}")
+            st.write(f"📈 **Change:** {diff:,.2f}")
+
+            st.bar_chart(pd.DataFrame({
+                "Month": [f1, f2],
+                "Total Sales": [t1, t2]
+            }).set_index("Month"))
 
 # ---------------------------------------------------------
 # FOOTER
 # ---------------------------------------------------------
-st.markdown("<p style='text-align:center;color:white;'>Created by Eudes 💧 | Excel-Style Smart Tracker</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:white;'>Created by Eudes 💧 | Excel-Style Tracker</p>", unsafe_allow_html=True)
+
+
 
 
 
