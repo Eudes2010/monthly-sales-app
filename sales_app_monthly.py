@@ -9,7 +9,7 @@ import base64
 st.set_page_config(page_title="💧 Monthly Consumption Tracker", layout="wide")
 
 # ---------------------------------------------------------
-# BACKGROUND IMAGE HANDLER WITH FALLBACK
+# BACKGROUND IMAGE HANDLER
 # ---------------------------------------------------------
 def set_background(image_file=None):
     try:
@@ -47,12 +47,12 @@ def set_background(image_file=None):
 set_background("background/bg.jpg")
 
 # ---------------------------------------------------------
-# GLASS CARD STYLE
+# STYLING (Glass Card)
 # ---------------------------------------------------------
 st.markdown("""
 <style>
 .glass-card {
-    background: rgba(255,255,255,0.82);
+    background: rgba(255,255,255,0.88);
     padding: 25px;
     border-radius: 15px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.2);
@@ -63,7 +63,7 @@ st.markdown("""
 # ---------------------------------------------------------
 # TITLE
 # ---------------------------------------------------------
-st.markdown("<h1 style='text-align:center; color:white;'>💧 Monthly Consumption Tracker</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; color:white;'>💧 Monthly Consumption Tracker (Excel Style)</h1>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # DATA DIRECTORY
@@ -72,11 +72,11 @@ DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ---------------------------------------------------------
-# SIDEBAR: COMPANY + MONTH SELECTION
+# SIDEBAR (COMPANY + MONTH)
 # ---------------------------------------------------------
-st.sidebar.header("🏢 Company & Month")
-company = st.sidebar.text_input("Enter Company Name:", "Kitengela")
-month = st.sidebar.text_input("Enter Month and Year (e.g., August 2025):", "August 2025")
+st.sidebar.header("🏢 Company & Month Setup")
+company = st.sidebar.text_input("Company Name:", "Kitengela")
+month = st.sidebar.text_input("Month & Year (e.g., August 2025):", "August 2025")
 
 file_name = f"{company}_{month.replace(' ', '_')}.csv"
 file_path = os.path.join(DATA_DIR, file_name)
@@ -84,23 +84,21 @@ file_path = os.path.join(DATA_DIR, file_name)
 columns = ["No.", "Name", "Current", "Old Meter", "New Meter", "1st Total", "Rate", "2nd Total", "Amount Paid", "Balance"]
 
 # ---------------------------------------------------------
-# LOAD OR CREATE DATAFRAME
+# LOAD OR CREATE FILE
 # ---------------------------------------------------------
 if "current_file" not in st.session_state:
     st.session_state.current_file = file_path
 
 if os.path.exists(st.session_state.current_file):
     df = pd.read_csv(st.session_state.current_file)
-    st.success(f"✅ Loaded data for {company} - {month}")
 else:
     df = pd.DataFrame(columns=columns)
-    st.info(f"🆕 No data for {company} - {month}. Start entering readings below.")
 
 # ---------------------------------------------------------
-# EDITABLE TABLE
+# EXCEL-LIKE EDITABLE TABLE
 # ---------------------------------------------------------
 st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-st.subheader(f"📋 {company} — {month} Consumption Table")
+st.subheader(f"📋 {company} — {month} Data Table (Editable like Excel)")
 
 edited_df = st.data_editor(
     df,
@@ -111,7 +109,7 @@ edited_df = st.data_editor(
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# AUTO CALCULATION
+# AUTO CALCULATION (LIKE FORMULAS)
 # ---------------------------------------------------------
 if not edited_df.empty:
     for col in ["Old Meter", "New Meter", "Rate", "Amount Paid", "1st Total", "2nd Total", "Current"]:
@@ -122,82 +120,41 @@ if not edited_df.empty:
     edited_df["Balance"] = edited_df["2nd Total"] - edited_df["Amount Paid"]
 
 # ---------------------------------------------------------
-# SUMMARY
+# AUTO-SAVE FEATURE
+# ---------------------------------------------------------
+edited_df.to_csv(st.session_state.current_file, index=False)
+st.success(f"💾 Auto-saved: {company} - {month}")
+
+# ---------------------------------------------------------
+# TOTAL SALES SUMMARY
 # ---------------------------------------------------------
 if not edited_df.empty:
     total_sales = edited_df["2nd Total"].sum()
     st.metric("💰 Total Monthly Sales", f"{total_sales:,.2f}")
 
 # ---------------------------------------------------------
-# SIDEBAR BUTTONS
+# SIDEBAR: SAVED FILES MANAGER (LIKE EXCEL OPEN)
 # ---------------------------------------------------------
 st.sidebar.markdown("---")
-save_btn = st.sidebar.button("💾 Save Data")
-new_btn = st.sidebar.button("🆕 New Month")
-show_btn = st.sidebar.button("📂 Show Saved Months")
+st.sidebar.subheader("📂 Saved Files Manager")
 
-# ---------------------------------------------------------
-# SAVE CURRENT DATA
-# ---------------------------------------------------------
-if save_btn:
-    edited_df.to_csv(st.session_state.current_file, index=False)
-    st.success(f"✅ Data saved successfully for {company} - {month}")
+saved_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
 
-# New month (safe, prevents AttributeError on experimental rerun)
-def _safe_rerun():
-    """
-    Try to rerun the app using Streamlit's rerun.
-    If rerun is not available in this environment, set a small flag
-    and stop execution so the user can manually refresh.
-    """
-    try:
-        # Preferred method
-        st.experimental_rerun()
-    except Exception:
-        # Fallback if experimental_rerun is not present or raises an error.
-        # We set a flag so the app knows a refresh is expected, then stop execution.
-        st.session_state["_needs_refresh"] = True
-        # st.stop() aborts the script safely (user can then refresh page).
-        st.stop()
+if saved_files:
+    selected_file = st.sidebar.selectbox("Select a saved file:", saved_files)
+    open_btn = st.sidebar.button("📂 Open Selected File")
 
-if new_btn:
-    # Clear all session state keys safely
-    for key in list(st.session_state.keys()):
-        try:
-            del st.session_state[key]
-        except Exception:
-            pass
-    # Create a blank dataframe in session so the editor can attach a fresh table
-    st.session_state["blank_df"] = pd.DataFrame(columns=columns)
-    # Try to rerun safely (will fallback if rerun isn't available)
-    _safe_rerun()
-
-# If we landed here after a fallback, inform the user to refresh
-if st.session_state.get("_needs_refresh", False):
-    st.warning("🆕 New month prepared. Please refresh the page to continue (your blank table was created).")
-
-# ---------------------------------------------------------
-# SHOW SAVED FILES & OPEN SELECTED ONE
-# ---------------------------------------------------------
-if show_btn:
-    st.subheader("📁 Saved Consumption Records")
-    saved_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
-
-    if saved_files:
-        selected_file = st.selectbox("Select a saved file to open:", saved_files)
-        open_btn = st.button("📂 Open Selected File")
-
-        if open_btn and selected_file:
-            st.session_state.current_file = os.path.join(DATA_DIR, selected_file)
-            st.success(f"✅ Opened {selected_file}")
-            st.rerun()
-    else:
-        st.info("ℹ️ No saved files found yet.")
+    if open_btn and selected_file:
+        st.session_state.current_file = os.path.join(DATA_DIR, selected_file)
+        st.success(f"✅ Opened {selected_file}")
+        st.rerun()
+else:
+    st.sidebar.info("No saved files found yet.")
 
 # ---------------------------------------------------------
 # FOOTER
 # ---------------------------------------------------------
-st.markdown("<p style='text-align:center;color:white;'>Created by Eudes 💧 | Powered by Streamlit</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:white;'>Created by Eudes 💧 | Excel-Style Smart Tracker</p>", unsafe_allow_html=True)
 
 
 
