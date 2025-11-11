@@ -29,19 +29,26 @@ menu = st.sidebar.radio(
 # HELPER FUNCTIONS
 # ---------------------------------------------------------
 def create_empty_table():
-    columns = ["Current", "Previous", "New Meter", "Total", "Rate", "Total Sales", "Amount Paid", "Balance"]
+    columns = ["No.", "Name", "Current", "Previous", "New Meter", "Total", "Rate", "Total Sales", "Amount Paid", "Balance"]
     return pd.DataFrame(columns=columns)
 
 def calculate_totals(df):
     df = df.copy()
     try:
-        for col in ["Current", "Previous", "New Meter", "Rate", "Amount Paid"]:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        # Keep "No." and "Name" as-is (text columns)
+        numeric_cols = ["Current", "Previous", "New Meter", "Rate", "Amount Paid"]
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
         # Auto calculations
         df["Total"] = df["New Meter"] - df["Previous"]
         df["Total Sales"] = df["Total"] * df["Rate"]
         df["Balance"] = df["Total Sales"] - df["Amount Paid"]
+
+        # Recalculate row numbers
+        df["No."] = range(1, len(df) + 1)
+
     except Exception as e:
         st.error(f"Error calculating totals: {e}")
     return df
@@ -155,8 +162,9 @@ elif menu == "ℹ️ About":
         You can save data for each month, open it again later, and see how totals change.  
 
         **Created by:** Eudes Roy  
-        **Version:** 3.0 — Improved saving, file loading, and Excel-style editing
+        **Version:** 4.0 — Fixed Name and No. Columns, Improved Save & Compare Features
     """)
+
 
 
 
