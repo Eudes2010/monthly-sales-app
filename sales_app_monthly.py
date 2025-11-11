@@ -153,7 +153,7 @@ elif menu == "📊 Compare":
             st.write(f"📈 **Difference:** {diff:,.2f}")
 
 # ---------------------------------------------------------
-# ABOUT PAGE
+# ABOUT PAGE (with Contact Info)
 # ---------------------------------------------------------
 elif menu == "ℹ️ About":
     st.markdown("""
@@ -161,11 +161,22 @@ elif menu == "ℹ️ About":
         This water consumption tracker helps you manage and compare monthly usage.  
         You can save data for each month, open it again later, and see how totals change.  
 
-        **Created by:** Eudes Roy  
-        **Version:** 4.0 — Fixed Name and No. Columns, Improved Save & Compare Features
+        **Developed by:** Eudes Roy  
+        **Version:** 4.1 — Added Contact Info & Column Fixes  
+        **Purpose:** Simplify water usage tracking for Kitengela, Ebenezer, and more projects.  
+
+        ---
+
+        ### 📞 Contact Information
+        - 📧 **Email:** eudesroy@example.com  
+        - 📱 **Phone:** +254 700 123 456  
+        - 🌐 **Website:** [www.eudesroyprojects.com](http://www.eudesroyprojects.com)  
+        - 🏢 **Address:** Kitengela, Kajiado County, Kenya  
+
+        ---
+
+        💬 *Thank you for using the Water Consumption Tracker!*
     """)
-
-
 
 
 
