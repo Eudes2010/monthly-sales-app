@@ -29,13 +29,16 @@ menu = st.sidebar.radio(
 # HELPER FUNCTIONS
 # ---------------------------------------------------------
 def create_empty_table():
-    columns = ["No.", "Name", "Current", "Previous", "New Meter", "Total", "Rate", "Total Sales", "Amount Paid", "Balance"]
+    columns = [
+        "No.", "Name", "Current", "Previous", "New Meter",
+        "Total", "Rate", "Total Sales", "Amount Paid", "Balance", "Contact Info"
+    ]
     return pd.DataFrame(columns=columns)
 
 def calculate_totals(df):
     df = df.copy()
     try:
-        # Keep "No." and "Name" as-is (text columns)
+        # Convert numeric columns safely
         numeric_cols = ["Current", "Previous", "New Meter", "Rate", "Amount Paid"]
         for col in numeric_cols:
             if col in df.columns:
@@ -46,9 +49,8 @@ def calculate_totals(df):
         df["Total Sales"] = df["Total"] * df["Rate"]
         df["Balance"] = df["Total Sales"] - df["Amount Paid"]
 
-        # Recalculate row numbers
+        # Auto numbering
         df["No."] = range(1, len(df) + 1)
-
     except Exception as e:
         st.error(f"Error calculating totals: {e}")
     return df
@@ -95,7 +97,14 @@ elif menu == "🆕 New Month":
     )
 
     updated_df = calculate_totals(edited_df)
+
+    # Display updated data
     st.dataframe(updated_df, use_container_width=True)
+
+    # Add total sum of Total Sales (Total 2)
+    if st.button("💰 Calculate Total Sales (Total 2)"):
+        total_sales_sum = updated_df["Total Sales"].sum()
+        st.success(f"Total 2 (Total Sales): {total_sales_sum:,.2f}")
 
     if st.button("💾 Save Month Data"):
         if month_name.strip() == "":
@@ -104,6 +113,15 @@ elif menu == "🆕 New Month":
             filename = f"{month_name.replace(' ', '_')}.csv"
             save_month_data(updated_df, filename)
             st.success(f"✅ Data saved successfully as {filename}")
+
+    # Footer: About the app
+    st.markdown("""
+        ---
+        ### 💧 About This App
+        This Water Consumption Tracker helps record and calculate water usage for each client.
+        It includes contact details for easy follow-up, auto-calculations of usage and balances,
+        and simple tools to compare monthly data for Kitengela, Ebenezer, and other projects.
+    """)
 
 # ---------------------------------------------------------
 # SAVED FILES PAGE
@@ -124,6 +142,10 @@ elif menu == "💾 Saved Files":
         if st.button("💾 Save Changes"):
             save_month_data(edited_df, selected_file)
             st.success("✅ Changes saved successfully.")
+
+        if st.button("💰 Calculate Total Sales (Total 2)"):
+            total_sales_sum = edited_df["Total Sales"].sum()
+            st.success(f"Total 2 (Total Sales): {total_sales_sum:,.2f}")
 
         st.dataframe(edited_df, use_container_width=True)
 
@@ -153,30 +175,16 @@ elif menu == "📊 Compare":
             st.write(f"📈 **Difference:** {diff:,.2f}")
 
 # ---------------------------------------------------------
-# ABOUT PAGE (with Contact Info)
+# ABOUT PAGE
 # ---------------------------------------------------------
 elif menu == "ℹ️ About":
     st.markdown("""
         ### ℹ️ About This App
         This water consumption tracker helps you manage and compare monthly usage.  
         You can save data for each month, open it again later, and see how totals change.  
-
-        **Developed by:** Eudes Roy  
-        **Version:** 4.1 — Added Contact Info & Column Fixes  
-        **Purpose:** Simplify water usage tracking for Kitengela, Ebenezer, and more projects.  
-
-        ---
-
-        ### 📞 Contact Information
-        - 📧 **Email:** eudesroy@example.com  
-        - 📱 **Phone:** +254 700 123 456  
-        - 🌐 **Website:** [www.eudesroyprojects.com](http://www.eudesroyprojects.com)  
-        - 🏢 **Address:** Kitengela, Kajiado County, Kenya  
-
-        ---
-
-        💬 *Thank you for using the Water Consumption Tracker!*
+        Developed by **Eudes Roy** for Kitengela and Ebenezer Projects.
     """)
+
 
 
 
